@@ -5,7 +5,7 @@ import Database.Persist
 import Database.Persist.SqlBackend (SqlBackend)
 
 data Command = ListEntities
-             | List
              | Create [PersistValue]
+             | Read
 
 type Action m = Command -> ReaderT SqlBackend m PersistValue
