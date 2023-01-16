@@ -1,0 +1,27 @@
+cabal-version:      2.4
+name:               persistent-crud-cli
+version:            0.1.0.0
+synopsis:           Provides basic CRUD command line interface for Persistent
+description:
+    persistent-crud-cli is a library providing a command line interface generator
+    allowing creating, listing, updating and removing Persistent entity values.
+author:             Gleb Popov
+maintainer:         6yearold@gmail.com
+license:            BSD-3-Clause
+category:           Database, CLI, Options
+
+library
+    exposed-modules:
+        Database.Persist.CRUD
+        Database.Persist.CRUD.TH
+        Database.Persist.CRUD.Types
+    build-depends:
+        base < 5,
+        conduit,
+        containers,
+        mtl,
+        optparse-applicative,
+        persistent,
+        template-haskell,
+        text
+    default-language: Haskell2010
