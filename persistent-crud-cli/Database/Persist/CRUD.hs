@@ -3,7 +3,9 @@ module Database.Persist.CRUD (
     module Database.Persist.CRUD.TH,
     module Database.Persist.CRUD.Types,
     listEntitiesCommand,
-    fieldToArgument
+    fieldToArgument,
+    textArgument,
+    intArgument
   )
 where
 

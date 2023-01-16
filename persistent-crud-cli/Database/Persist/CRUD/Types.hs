@@ -7,5 +7,6 @@ import Database.Persist.SqlBackend (SqlBackend)
 data Command = ListEntities
              | Create [PersistValue]
              | Read
+             | Update [PersistValue]
 
 type Action m = Command -> ReaderT SqlBackend m PersistValue

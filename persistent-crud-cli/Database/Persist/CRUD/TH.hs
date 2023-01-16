@@ -19,7 +19,7 @@ import Database.Persist.Quasi.Internal
 import Database.Persist.TH
 import Database.Persist.EntityDef.Internal (EntityDef(..))
 
-import Database.Persist.CRUD.Types
+import Database.Persist.CRUD.Types as CRUD
 
 -- | For each <Entity> creates definitions for:
 --    * create-<Entity> functions
@@ -34,10 +34,12 @@ mkPersistCRUD
 mkPersistCRUD mps ents = do
     createCommandsDec <- mkCreateCommands mps (map unbindEntityDef ents)
     readCommandsDec <- mkReadCommands mps (map unbindEntityDef ents)
+    updateCommandsDec <- mkUpdateCommands mps (map unbindEntityDef ents)
 
     return $ mconcat [
         createCommandsDec,
-        readCommandsDec
+        readCommandsDec,
+        updateCommandsDec
       ]
 
 
@@ -94,6 +96,41 @@ mkReadParserExpr mps ent = do
         |]
   [|pure (Read, $(action))|]
 
+
+mkUpdateCommands :: MkPersistSettings -> [UnboundEntityDef] -> Q [Dec]
+mkUpdateCommands mps ents = do
+  let allUpdateCmdExprs = ListE <$> forM ents (mkUpdateCommandExpr mps)
+  [d| updateCommands :: MonadIO m => Mod CommandFields (Command, Action m)
+      updateCommands = mconcat $(allUpdateCmdExprs)
+    |]
+
+mkUpdateCommandExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
+mkUpdateCommandExpr mps ent = do
+  let parserExpr = mkUpdateParserExpr mps ent
+  [|command ("update-" ++ entityNameString ent)
+            (info $(parserExpr)
+                  (progDesc $ "Updates an instance of " ++ entityNameString ent ++ " entity identified by given key with new values"))
+               |]
+
+mkUpdateParserExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
+mkUpdateParserExpr mps ent = do
+  let typ_ = pure $ genericDataType mps (entityHaskell (unboundEntityDef ent)) backendT
+      parser = [|(:) <$> intArgument <*> traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $typ_)))
+                |]
+      action = [|\(CRUD.Update (key:args)) -> do
+          let keyOrErr = fromPersistValue key :: Either T.Text (Key $typ_)
+              valOrErr = fromPersistValues args :: Either T.Text $typ_
+          case (,) <$> keyOrErr <*> valOrErr of
+            Left err -> pure (PersistText err)
+            Right (key', val) -> do
+              existingEnt <- get key'
+              case existingEnt of
+                Nothing -> pure (PersistText "Requested key not found")
+                Just _ -> do
+                  replace key' val
+                  pure (PersistBool True)
+        |]
+  [|fmap (\args -> (CRUD.Update args, $(action))) $(parser)|]
 
 entityNameString :: UnboundEntityDef -> String
 entityNameString = T.unpack . unEntityNameHS . getEntityHaskellName . unboundEntityDef
