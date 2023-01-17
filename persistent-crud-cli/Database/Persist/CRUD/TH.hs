@@ -90,11 +90,17 @@ mkReadCommandExpr mps ent = do
 mkReadParserExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
 mkReadParserExpr mps ent = do
   let typ_ = pure $ genericDataType mps (entityHaskell (unboundEntityDef ent)) backendT
-      action = [|\Read -> do
-          ents <- selectList [] []
+      parser = [|pure <$> option (PersistInt64 <$> auto)
+                                 (short 'l' <> metavar "INT" <> help "Number of rows to limit the output to" <> value (PersistInt64 0))
+                |]
+      action = [|\(Read [limit]) -> do
+          let selectOpts = case limit of
+                (PersistInt64 0) -> []
+                (PersistInt64 l) -> [LimitTo $ fromIntegral l]
+          ents <- selectList [] selectOpts
           pure (PersistList (map (PersistList . toPersistFields . entityVal) (ents :: [Entity $typ_])))
         |]
-  [|pure (Read, $(action))|]
+  [|fmap (\args -> (Read args, $(action))) $(parser)|]
 
 
 mkUpdateCommands :: MkPersistSettings -> [UnboundEntityDef] -> Q [Dec]
