@@ -3,6 +3,7 @@
 {-# LANGUAGE ViewPatterns #-}
 module Database.Persist.CRUD.TH(
     mkPersistCRUD,
+    mkPersistCRUD',
     textArgument,
     intArgument
   )
@@ -43,6 +44,13 @@ mkPersistCRUD mps ents = do
         readCommandsDec,
         updateCommandsDec
       ]
+
+-- | Variant of 'mkPersistCRUD' that takes 'EntityDef's instead of 'UnboundEntityDef's.
+mkPersistCRUD'
+    :: MkPersistSettings
+    -> [EntityDef]
+    -> Q [Dec]
+mkPersistCRUD' mps ents = mkPersistCRUD mps (map unbindEntityDef ents)
 
 
 mkCreateCommands :: MkPersistSettings -> [UnboundEntityDef] -> Q [Dec]

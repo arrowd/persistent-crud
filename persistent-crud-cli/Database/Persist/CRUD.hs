@@ -8,9 +8,8 @@ module Database.Persist.CRUD (
   )
 where
 
-import qualified Data.Text as T
 import Database.Persist
-import Database.Persist.Quasi.Internal
+import Database.Persist.Quasi.Internal (UnboundEntityDef, unboundEntityDef)
 import Database.Persist.CRUD.TH
 import Database.Persist.CRUD.Types
 import Options.Applicative
