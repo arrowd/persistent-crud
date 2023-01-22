@@ -27,9 +27,11 @@ import Database.Persist.CRUD.Types as CRUD
 -- | For each <Entity> creates definitions for:
 --    * create-<Entity> functions
 --    * read-<Entity> functions
+--    * update-<Entity> functions
 -- | Also creates following definitions of type 'Mod CommandFields (Command, Action m)':
 --    * createCommands
 --    * readCommands
+--    * updateCommands
 mkPersistCRUD
     :: MkPersistSettings
     -> [UnboundEntityDef]
