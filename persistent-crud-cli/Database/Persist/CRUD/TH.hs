@@ -37,11 +37,16 @@ mkPersistCRUD
     -> [UnboundEntityDef]
     -> Q [Dec]
 mkPersistCRUD mps ents = do
+    listEntitiesCommandDec <- [d|
+        listEntitiesCommand :: MonadIO m => Mod CommandFields (Command, Action m)
+        listEntitiesCommand = command "list-entities" $ info (pure (ListEntities, const $ listEntities ents)) (progDesc "List all known entities")
+      |]
     createCommandsDec <- mkCreateCommands mps ents
     readCommandsDec <- mkReadCommands mps ents
     updateCommandsDec <- mkUpdateCommands mps ents
 
     return $ mconcat [
+        listEntitiesCommandDec,
         createCommandsDec,
         readCommandsDec,
         updateCommandsDec
@@ -53,6 +58,10 @@ mkPersistCRUD'
     -> [EntityDef]
     -> Q [Dec]
 mkPersistCRUD' mps ents = mkPersistCRUD mps (map unbindEntityDef ents)
+
+
+listEntities :: Applicative m => [UnboundEntityDef] -> m PersistValue
+listEntities = pure . PersistList . map (PersistText . unEntityNameHS . getEntityHaskellName . unboundEntityDef)
 
 
 mkCreateCommands :: MkPersistSettings -> [UnboundEntityDef] -> Q [Dec]

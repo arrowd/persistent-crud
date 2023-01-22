@@ -11,6 +11,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+import Control.Monad.Reader
 import Data.Text
 import Database.Persist.TH
 import Database.Persist.CRUD
@@ -28,7 +29,8 @@ Dog
 |]
 
 optsParser :: Parser (Command, Action IO)
-optsParser = hsubparser (createCommands
+optsParser = hsubparser (listEntitiesCommand
+    <> createCommands
     <> readCommands
     <> updateCommands
     )
@@ -37,5 +39,6 @@ main = do
   args <- getArgs
   let parseResult = execParserPure (prefs showHelpOnEmpty) (info optsParser idm) args
   case parseResult of
+    Success (ListEntities, act) -> runReaderT (act undefined) undefined >>= print
     Success (cmd, _) -> print cmd
     Failure f -> print $ (\(x, _, _) -> x) $ execFailure f ""
