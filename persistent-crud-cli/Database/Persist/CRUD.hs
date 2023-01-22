@@ -1,11 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Database.Persist.CRUD (
     module Database.Persist.CRUD.TH,
     module Database.Persist.CRUD.Types,
     listEntitiesCommand,
-    fieldToArgument,
-    textArgument,
-    intArgument
+    fieldToArgument
   )
 where
 
@@ -29,9 +28,7 @@ listEntities = pure . PersistList . map (PersistText . unEntityNameHS . getEntit
 -- We also leak 'fieldToArgument' outside
 fieldToArgument :: FieldDef -> Parser PersistValue
 fieldToArgument field = case fieldType field of
-    FTTypeCon _ "Text" -> textArgument
-    FTTypeCon _ "String" -> textArgument
-    FTTypeCon _ "Int" -> intArgument
+    FTTypeCon _ "Text" -> $textArgument
+    FTTypeCon _ "String" -> $textArgument
+    FTTypeCon _ "Int" -> $intArgument
 
-textArgument = argument (PersistText . T.pack <$> str) (metavar "TEXT")
-intArgument = argument (PersistInt64 <$> auto) (metavar "INT")

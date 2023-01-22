@@ -2,7 +2,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 module Database.Persist.CRUD.TH(
-    mkPersistCRUD
+    mkPersistCRUD,
+    textArgument,
+    intArgument
   )
 where
 
@@ -121,7 +123,7 @@ mkUpdateCommandExpr mps ent = do
 mkUpdateParserExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
 mkUpdateParserExpr mps ent = do
   let typ_ = pure $ genericDataType mps (entityHaskell (unboundEntityDef ent)) backendT
-      parser = [|(:) <$> intArgument <*> traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $typ_)))
+      parser = [|(:) <$> $intArgument <*> traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $typ_)))
                 |]
       action = [|\(CRUD.Update (key:args)) -> do
           let keyOrErr = fromPersistValue key :: Either T.Text (Key $typ_)
@@ -137,6 +139,13 @@ mkUpdateParserExpr mps ent = do
                   pure (PersistBool True)
         |]
   [|fmap (\args -> (CRUD.Update args, $(action))) $(parser)|]
+
+
+textArgument :: Q Exp
+textArgument = [|argument (PersistText . T.pack <$> str) (metavar "TEXT")|]
+intArgument :: Q Exp
+intArgument = [|argument (PersistInt64 <$> auto) (metavar "INT")|]
+
 
 entityNameString :: UnboundEntityDef -> String
 entityNameString = T.unpack . unEntityNameHS . getEntityHaskellName . unboundEntityDef
