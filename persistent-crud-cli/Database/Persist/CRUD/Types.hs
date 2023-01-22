@@ -8,5 +8,6 @@ data Command = ListEntities
              | Create [PersistValue]
              | Read [PersistValue]
              | Update [PersistValue]
+  deriving Show
 
 type Action m = Command -> ReaderT SqlBackend m PersistValue
