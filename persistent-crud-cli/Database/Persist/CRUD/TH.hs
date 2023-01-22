@@ -31,12 +31,12 @@ import Database.Persist.CRUD.Types as CRUD
 --    * readCommands
 mkPersistCRUD
     :: MkPersistSettings
-    -> [EntityDef]
+    -> [UnboundEntityDef]
     -> Q [Dec]
 mkPersistCRUD mps ents = do
-    createCommandsDec <- mkCreateCommands mps (map unbindEntityDef ents)
-    readCommandsDec <- mkReadCommands mps (map unbindEntityDef ents)
-    updateCommandsDec <- mkUpdateCommands mps (map unbindEntityDef ents)
+    createCommandsDec <- mkCreateCommands mps ents
+    readCommandsDec <- mkReadCommands mps ents
+    updateCommandsDec <- mkUpdateCommands mps ents
 
     return $ mconcat [
         createCommandsDec,

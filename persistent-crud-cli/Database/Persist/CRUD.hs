@@ -10,19 +10,20 @@ where
 
 import qualified Data.Text as T
 import Database.Persist
+import Database.Persist.Quasi.Internal
 import Database.Persist.CRUD.TH
 import Database.Persist.CRUD.Types
 import Options.Applicative
 
 -- | Lists all entities known to Persistent.
 -- This command does not require TH code generation.
-listEntitiesCommand :: Applicative m => [EntityDef] -> Mod CommandFields (Command, Action m)
+listEntitiesCommand :: Applicative m => [UnboundEntityDef] -> Mod CommandFields (Command, Action m)
 listEntitiesCommand entityDefs =
   command "list-entities" $
     info (pure (ListEntities, const $ listEntities entityDefs)) (progDesc "List all known entities")
 
-listEntities :: Applicative m => [EntityDef] -> m PersistValue
-listEntities = pure . PersistList . map (PersistText . unEntityNameHS . getEntityHaskellName)
+listEntities :: Applicative m => [UnboundEntityDef] -> m PersistValue
+listEntities = pure . PersistList . map (PersistText . unEntityNameHS . getEntityHaskellName . unboundEntityDef)
 
 -- TODO: This is a suboptimal solution until it'd be possible to call 'tabulateEntityA' in the TH code
 -- We also leak 'fieldToArgument' outside
