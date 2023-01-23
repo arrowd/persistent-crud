@@ -5,6 +5,7 @@ import Database.Persist
 import Database.Persist.SqlBackend (SqlBackend)
 
 data Command = ListEntities
+             | TimeHelp
              | Create [PersistValue]
              | Read [PersistValue]
              | Update [PersistValue]

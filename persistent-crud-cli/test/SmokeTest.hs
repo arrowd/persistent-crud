@@ -13,6 +13,7 @@
 
 import Control.Monad.Reader
 import Data.Text
+import Data.Time.Clock
 import Database.Persist.TH
 import Database.Persist.CRUD
 import Options.Applicative
@@ -26,6 +27,9 @@ User
 Dog
   name    Text
   owner   UserId
+
+Contract
+  started UTCTime
 |]
 
 optsParser :: Parser (Command, Action IO)
@@ -33,6 +37,7 @@ optsParser = hsubparser (listEntitiesCommand
     <> createCommands
     <> readCommands
     <> updateCommands
+    <> helpCommand
     )
 
 main = do

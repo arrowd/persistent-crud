@@ -23,7 +23,8 @@ library
         optparse-applicative,
         persistent,
         template-haskell,
-        text
+        text,
+        time
     default-language: Haskell2010
 
 test-suite crud-cli-smoketest
@@ -36,6 +37,7 @@ test-suite crud-cli-smoketest
         persistent,
         persistent-crud-cli,
         optparse-applicative,
-        text
+        text,
+        time
     type: exitcode-stdio-1.0
     default-language: Haskell2010

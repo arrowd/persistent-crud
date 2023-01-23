@@ -5,13 +5,15 @@ module Database.Persist.CRUD.TH(
     mkPersistCRUD,
     mkPersistCRUD',
     textArgument,
-    intArgument
+    intArgument,
+    timeArgument
   )
 where
 
 import Control.Monad
 import Control.Monad.IO.Class
 import qualified Data.Text as T
+import Data.Time.Format
 
 import Language.Haskell.TH.Syntax
 
@@ -164,7 +166,12 @@ textArgument :: Q Exp
 textArgument = [|argument (PersistText . T.pack <$> str) (metavar "TEXT")|]
 intArgument :: Q Exp
 intArgument = [|argument (PersistInt64 <$> auto) (metavar "INT")|]
-
+timeArgument :: Q Exp
+timeArgument = [|argument (PersistUTCTime <$> maybeReader (\str -> case span (/= '#') str of
+    (format, _:timeVal) -> parseTimeM True defaultTimeLocale format timeVal
+    _ -> Nothing
+    )) (metavar "FORMAT#TIME")
+  |]
 
 entityNameString :: UnboundEntityDef -> String
 entityNameString = T.unpack . unEntityNameHS . getEntityHaskellName . unboundEntityDef
