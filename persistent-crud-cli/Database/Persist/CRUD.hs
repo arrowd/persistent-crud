@@ -17,7 +17,7 @@ import Options.Applicative.Help.Pretty
 
 helpCommand = command "help" $ info args (progDesc "Print help on passing time values")
   where
-    args = argument disabled (hidden <> metavar "TEXT" <> help "Arbitrary text values. To pass an empty string use \"\"")
+    args = argument disabled (hidden <> metavar "TEXT" <> help "Arbitrary text values. To pass an empty string use \"\" for Unix-like shells and '\"\"' or \"''\" for PowerShell")
         <|> argument disabled (hidden <> metavar "INT" <> help "Positive and negative integers. To pass hex values use \"0x\" prefix.")
         <|> argument disabled (hidden <> metavar "FORMAT#TIME" <> helpDoc timeHelp)
     timeHelp = Just $ vsep [
