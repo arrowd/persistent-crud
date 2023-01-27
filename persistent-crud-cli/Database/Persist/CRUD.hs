@@ -19,6 +19,7 @@ helpCommand = command "help" $ info args (progDesc "Print help on passing time v
   where
     args = argument disabled (hidden <> metavar "TEXT" <> help "Arbitrary text values. To pass an empty string use \"\" for Unix-like shells and '\"\"' or \"''\" for PowerShell")
         <|> argument disabled (hidden <> metavar "INT" <> help "Positive and negative integers. To pass hex values use \"0x\" prefix.")
+        <|> argument disabled (hidden <> metavar "BOOL" <> help "Boolean values. \"True\", \"true\" and \"1\" forms are allowed.")
         <|> argument disabled (hidden <> metavar "FORMAT#TIME" <> helpDoc timeHelp)
     timeHelp = Just $ vsep [
         "Time fields are specified in the \"format#value\" form" :: Doc,
@@ -37,4 +38,5 @@ fieldToArgument field = case fieldType field of
     FTTypeCon _ "Text" -> $textArgument
     FTTypeCon _ "String" -> $textArgument
     FTTypeCon _ "Int" -> $intArgument
+    FTTypeCon _ "Bool" -> $boolArgument
     FTTypeCon _ "UTCTime" -> $timeArgument

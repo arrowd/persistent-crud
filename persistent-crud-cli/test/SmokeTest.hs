@@ -23,6 +23,7 @@ share [mkPersist sqlSettings, mkPersistCRUD sqlSettings] [persistLowerCase|
 User
   name    Text
   age     Int
+  vactinated Bool
 
 Dog
   name    Text

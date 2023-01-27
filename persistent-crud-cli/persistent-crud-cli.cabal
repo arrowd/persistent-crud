@@ -25,6 +25,8 @@ library
         template-haskell,
         text,
         time
+    default-extensions:
+        LambdaCase
     default-language: Haskell2010
 
 test-suite crud-cli-smoketest

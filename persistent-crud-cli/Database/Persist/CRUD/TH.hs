@@ -6,6 +6,7 @@ module Database.Persist.CRUD.TH(
     mkPersistCRUD',
     textArgument,
     intArgument,
+    boolArgument,
     timeArgument
   )
 where
@@ -166,12 +167,27 @@ textArgument :: Q Exp
 textArgument = [|argument (PersistText . T.pack <$> str) (metavar "TEXT")|]
 intArgument :: Q Exp
 intArgument = [|argument (PersistInt64 <$> auto) (metavar "INT")|]
+boolArgument :: Q Exp
+boolArgument = [|argument (PersistBool <$> relaxedBoolReadM) (metavar "BOOL")|]
 timeArgument :: Q Exp
 timeArgument = [|argument (PersistUTCTime <$> maybeReader (\str -> case span (/= '#') str of
     (format, _:timeVal) -> parseTimeM True defaultTimeLocale format timeVal
     _ -> Nothing
     )) (metavar "FORMAT#TIME")
   |]
+
+relaxedBoolReadM :: ReadM Bool
+relaxedBoolReadM = auto
+    <|> maybeReader lowercaseBool
+    <|> integerBool
+  where
+    lowercaseBool "true" = Just True
+    lowercaseBool "false" = Just False
+    lowercaseBool _ = Nothing
+    integerBool = auto >>= \case
+        0 -> pure False
+        1 -> pure True
+        _ -> empty
 
 entityNameString :: UnboundEntityDef -> String
 entityNameString = T.unpack . unEntityNameHS . getEntityHaskellName . unboundEntityDef
