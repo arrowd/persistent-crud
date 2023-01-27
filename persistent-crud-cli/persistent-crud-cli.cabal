@@ -13,6 +13,7 @@ category:           Database, CLI, Options
 library
     exposed-modules:
         Database.Persist.CRUD
+        Database.Persist.CRUD.Options
         Database.Persist.CRUD.TH
         Database.Persist.CRUD.Types
     build-depends:

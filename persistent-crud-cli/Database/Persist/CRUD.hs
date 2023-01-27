@@ -1,10 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
 module Database.Persist.CRUD (
     module Database.Persist.CRUD.TH,
     module Database.Persist.CRUD.Types,
-    helpCommand,
-    fieldToArgument
+    helpCommand
   )
 where
 
@@ -30,13 +28,3 @@ helpCommand = command "help" $ info args (progDesc "Print help on passing time v
         "%F#2023-12-31\t\tspecify a triplet of year-month-day",
         "%c#Mon Feb 14 15:45:55 +0300 2023\tmost elaborate way to specify a date"
       ]
-
--- TODO: This is a suboptimal solution until it'd be possible to call 'tabulateEntityA' in the TH code
--- We also leak 'fieldToArgument' outside
-fieldToArgument :: FieldDef -> Parser PersistValue
-fieldToArgument field = case fieldType field of
-    FTTypeCon _ "Text" -> $textArgument
-    FTTypeCon _ "String" -> $textArgument
-    FTTypeCon _ "Int" -> $intArgument
-    FTTypeCon _ "Bool" -> $boolArgument
-    FTTypeCon _ "UTCTime" -> $timeArgument

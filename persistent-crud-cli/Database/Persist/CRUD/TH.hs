@@ -3,11 +3,7 @@
 {-# LANGUAGE ViewPatterns #-}
 module Database.Persist.CRUD.TH(
     mkPersistCRUD,
-    mkPersistCRUD',
-    textArgument,
-    intArgument,
-    boolArgument,
-    timeArgument
+    mkPersistCRUD'
   )
 where
 
@@ -18,14 +14,13 @@ import Data.Time.Format
 
 import Language.Haskell.TH.Syntax
 
-import Options.Applicative
-
 import Database.Persist
 import Database.Persist.Quasi.Internal
 import Database.Persist.TH
 import Database.Persist.EntityDef.Internal (EntityDef(..))
 
 import Database.Persist.CRUD.Types as CRUD
+import Database.Persist.CRUD.Options
 
 -- | For each <Entity> creates definitions for:
 --    * create-<Entity> functions
@@ -145,7 +140,8 @@ mkUpdateCommandExpr mps ent = do
 mkUpdateParserExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
 mkUpdateParserExpr mps ent = do
   let typ_ = pure $ genericDataType mps (entityHaskell (unboundEntityDef ent)) backendT
-      parser = [|(:) <$> $intArgument <*> traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $typ_)))
+      -- TODO: what if keys are int32?
+      parser = [|(:) <$> $int64Argument <*> traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $typ_)))
                 |]
       action = [|\(CRUD.Update (key:args)) -> do
           let keyOrErr = fromPersistValue key :: Either T.Text (Key $typ_)
@@ -163,34 +159,18 @@ mkUpdateParserExpr mps ent = do
   [|fmap (\args -> (CRUD.Update args, $(action))) $(parser)|]
 
 
-textArgument :: Q Exp
-textArgument = [|argument (PersistText . T.pack <$> str) (metavar "TEXT")|]
-intArgument :: Q Exp
-intArgument = [|argument (PersistInt64 <$> auto) (metavar "INT")|]
-boolArgument :: Q Exp
-boolArgument = [|argument (PersistBool <$> relaxedBoolReadM) (metavar "BOOL")|]
-timeArgument :: Q Exp
-timeArgument = [|argument (PersistUTCTime <$> maybeReader (\str -> case span (/= '#') str of
-    (format, _:timeVal) -> parseTimeM True defaultTimeLocale format timeVal
-    _ -> Nothing
-    )) (metavar "FORMAT#TIME")
-  |]
-
-relaxedBoolReadM :: ReadM Bool
-relaxedBoolReadM = auto
-    <|> maybeReader lowercaseBool
-    <|> integerBool
-  where
-    lowercaseBool "true" = Just True
-    lowercaseBool "false" = Just False
-    lowercaseBool _ = Nothing
-    integerBool = auto >>= \case
-        0 -> pure False
-        1 -> pure True
-        _ -> empty
-
 entityNameString :: UnboundEntityDef -> String
 entityNameString = T.unpack . unEntityNameHS . getEntityHaskellName . unboundEntityDef
+
+
+fieldToArgument :: FieldDef -> Parser PersistValue
+fieldToArgument field = case fieldSqlType field of
+    SqlString -> $textArgument
+    SqlInt32 -> $int32Argument
+    SqlInt64 -> $int64Argument
+    SqlBool -> $boolArgument
+    SqlDayTime -> $timeArgument
+
 
 -- Stolen from persistent itself
 
