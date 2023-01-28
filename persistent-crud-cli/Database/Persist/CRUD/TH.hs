@@ -10,7 +10,6 @@ where
 import Control.Monad
 import Control.Monad.IO.Class
 import qualified Data.Text as T
-import Data.Time.Format
 
 import Language.Haskell.TH.Syntax
 
@@ -141,7 +140,7 @@ mkUpdateParserExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
 mkUpdateParserExpr mps ent = do
   let typ_ = pure $ genericDataType mps (entityHaskell (unboundEntityDef ent)) backendT
       -- TODO: what if keys are int32?
-      parser = [|(:) <$> $int64Argument <*> traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $typ_)))
+      parser = [|(:) <$> mkArg int64Argument <*> traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $typ_)))
                 |]
       action = [|\(CRUD.Update (key:args)) -> do
           let keyOrErr = fromPersistValue key :: Either T.Text (Key $typ_)
@@ -164,13 +163,21 @@ entityNameString = T.unpack . unEntityNameHS . getEntityHaskellName . unboundEnt
 
 
 fieldToArgument :: FieldDef -> Parser PersistValue
-fieldToArgument field = case fieldSqlType field of
-    SqlString -> $textArgument
-    SqlInt32 -> $int32Argument
-    SqlInt64 -> $int64Argument
-    SqlBool -> $boolArgument
-    SqlDayTime -> $timeArgument
-
+fieldToArgument field = mkArg $ case fieldSqlType field of
+    SqlString -> maybefy textArgument
+    SqlInt32 -> maybefy int32Argument
+    SqlInt64 -> maybefy int64Argument
+    SqlBool -> maybefy boolArgument
+    SqlDayTime -> maybefy timeArgument
+  where
+    isMaybe = case fieldType field of
+      FTApp (FTTypeCon _ "Maybe") _ -> True
+      _ -> isFieldNullable field /= NotNullable
+    maybefy (valReader, valMod) = if isMaybe
+      then (maybeReader <|> valReader, valMod <> optionMod prependMaybeMetavar)
+      else (valReader, valMod)
+    (maybeReader, maybeMod) = maybeArgument
+    prependMaybeMetavar optProps = optProps { propMetaVar = "(# | " <> propMetaVar optProps <> ")"}
 
 -- Stolen from persistent itself
 

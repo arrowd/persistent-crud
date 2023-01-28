@@ -24,6 +24,7 @@ User
   name    Text
   age     Int
   vactinated Bool
+  accessLevel   (Maybe Int)
 
 Dog
   name    Text

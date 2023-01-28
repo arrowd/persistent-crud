@@ -1,36 +1,55 @@
-{-# LANGUAGE TemplateHaskellQuotes #-}
 module Database.Persist.CRUD.Options(
     module Options.Applicative,
+    optionMod,
+    propMetaVar,
+
+    mkArg,
 
     textArgument,
     int32Argument,
     int64Argument,
     boolArgument,
     timeArgument,
+    maybeArgument,
 
     relaxedBoolReadM
   )
 where
 
 import Options.Applicative
+import Options.Applicative.Types
+import Options.Applicative.Builder.Internal (optionMod)
 import qualified Data.Text as T
+import Data.Time.Format
 import Database.Persist.PersistValue
 import Language.Haskell.TH.Syntax
 
-textArgument :: Q Exp
-textArgument = [|argument (PersistText . T.pack <$> str) (metavar "TEXT")|]
-int32Argument :: Q Exp
-int32Argument = [|argument (PersistInt64 <$> auto) (metavar "INT")|]
-int64Argument :: Q Exp
-int64Argument = [|argument (PersistInt64 <$> auto) (metavar "INT")|]
-boolArgument :: Q Exp
-boolArgument = [|argument (PersistBool <$> relaxedBoolReadM) (metavar "BOOL")|]
-timeArgument :: Q Exp
-timeArgument = [|argument (PersistUTCTime <$> maybeReader (\str -> case span (/= '#') str of
+nothingSymbol :: String
+nothingSymbol = "#"
+
+mkArg = uncurry argument
+
+textArgument :: (ReadM PersistValue, Mod ArgumentFields PersistValue)
+textArgument = (PersistText . T.pack <$> str, metavar "TEXT")
+
+int32Argument :: (ReadM PersistValue, Mod ArgumentFields PersistValue)
+int32Argument = (PersistInt64 <$> auto, metavar "INT")
+
+int64Argument :: (ReadM PersistValue, Mod ArgumentFields PersistValue)
+int64Argument = (PersistInt64 <$> auto, metavar "INT")
+
+boolArgument :: (ReadM PersistValue, Mod ArgumentFields PersistValue)
+boolArgument = (PersistBool <$> relaxedBoolReadM, metavar "BOOL")
+
+timeArgument :: (ReadM PersistValue, Mod ArgumentFields PersistValue)
+timeArgument = (PersistUTCTime <$> maybeReader (\str -> case span (/= '#') str of
     (format, _:timeVal) -> parseTimeM True defaultTimeLocale format timeVal
     _ -> Nothing
-    )) (metavar "FORMAT#TIME")
-  |]
+    ), metavar "FORMAT#TIME")
+
+maybeArgument :: (ReadM PersistValue, Mod ArgumentFields PersistValue)
+maybeArgument = (PersistNull <$ exactReadM nothingSymbol, metavar nothingSymbol)
+
 
 relaxedBoolReadM :: ReadM Bool
 relaxedBoolReadM = auto
@@ -44,3 +63,5 @@ relaxedBoolReadM = auto
         0 -> pure False
         1 -> pure True
         _ -> empty
+
+exactReadM v = maybeReader $ \arg -> if v == arg then Just () else Nothing
