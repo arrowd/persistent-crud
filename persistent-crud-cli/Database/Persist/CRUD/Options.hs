@@ -6,8 +6,7 @@ module Database.Persist.CRUD.Options(
     mkArg,
 
     textArgument,
-    int32Argument,
-    int64Argument,
+    intArgument,
     boolArgument,
     timeArgument,
     maybeArgument,
@@ -32,11 +31,8 @@ mkArg = uncurry argument
 textArgument :: (ReadM PersistValue, Mod ArgumentFields PersistValue)
 textArgument = (PersistText . T.pack <$> str, metavar "TEXT")
 
-int32Argument :: (ReadM PersistValue, Mod ArgumentFields PersistValue)
-int32Argument = (PersistInt64 <$> auto, metavar "INT")
-
-int64Argument :: (ReadM PersistValue, Mod ArgumentFields PersistValue)
-int64Argument = (PersistInt64 <$> auto, metavar "INT")
+intArgument :: (ReadM PersistValue, Mod ArgumentFields PersistValue)
+intArgument = (PersistInt64 <$> auto, metavar "INT")
 
 boolArgument :: (ReadM PersistValue, Mod ArgumentFields PersistValue)
 boolArgument = (PersistBool <$> relaxedBoolReadM, metavar "BOOL")

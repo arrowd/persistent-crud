@@ -139,8 +139,7 @@ mkUpdateCommandExpr mps ent = do
 mkUpdateParserExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
 mkUpdateParserExpr mps ent = do
   let typ_ = pure $ genericDataType mps (entityHaskell (unboundEntityDef ent)) backendT
-      -- TODO: what if keys are int32?
-      parser = [|(:) <$> mkArg int64Argument <*> traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $typ_)))
+      parser = [|(:) <$> mkArg intArgument <*> traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $typ_)))
                 |]
       action = [|\(CRUD.Update (key:args)) -> do
           let keyOrErr = fromPersistValue key :: Either T.Text (Key $typ_)
@@ -165,8 +164,8 @@ entityNameString = T.unpack . unEntityNameHS . getEntityHaskellName . unboundEnt
 fieldToArgument :: FieldDef -> Parser PersistValue
 fieldToArgument field = mkArg $ case fieldSqlType field of
     SqlString -> maybefy textArgument
-    SqlInt32 -> maybefy int32Argument
-    SqlInt64 -> maybefy int64Argument
+    SqlInt32 -> maybefy intArgument
+    SqlInt64 -> maybefy intArgument
     SqlBool -> maybefy boolArgument
     SqlDayTime -> maybefy timeArgument
   where
