@@ -7,7 +7,9 @@ import Database.Persist.SqlBackend (SqlBackend)
 data Command = ListEntities
              | TimeHelp
              | Create [PersistValue]
-             | Read [PersistValue]
+             | Read {
+                readLimitTo :: Word
+               }
              | Update [PersistValue]
   deriving Show
 
