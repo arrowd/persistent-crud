@@ -116,7 +116,7 @@ mkReadParserExpr mps ent = do
                 0 -> []
                 _ -> [LimitTo $ fromIntegral limit]
           ents <- selectList [] selectOpts
-          pure (PersistList (map (PersistList . toPersistFields . entityVal) (ents :: [Entity $typ_])))
+          pure (PersistList (map toPersistValue (ents :: [Entity $typ_])))
         |]
   [|fmap (\args -> (Read args, $(action))) $(parser)|]
 
