@@ -139,9 +139,9 @@ mkUpdateCommandExpr mps ent = do
 mkUpdateParserExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
 mkUpdateParserExpr mps ent = do
   let typ_ = pure $ genericDataType mps (entityHaskell (unboundEntityDef ent)) backendT
-      parser = [|(:) <$> mkArg intArgument <*> traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $typ_)))
+      parser = [|CRUD.Update <$> mkArg keyArgument <*> traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $typ_)))
                 |]
-      action = [|\(CRUD.Update (key:args)) -> do
+      action = [|\(CRUD.Update key args) -> do
           let keyOrErr = fromPersistValue key :: Either T.Text (Key $typ_)
               valOrErr = fromPersistValues args :: Either T.Text $typ_
           case (,) <$> keyOrErr <*> valOrErr of
@@ -154,7 +154,7 @@ mkUpdateParserExpr mps ent = do
                   replace key' val
                   pure (PersistBool True)
         |]
-  [|fmap (\args -> (CRUD.Update args, $(action))) $(parser)|]
+  [|fmap (\cmd -> (cmd, $(action))) $(parser)|]
 
 
 entityNameString :: UnboundEntityDef -> String
