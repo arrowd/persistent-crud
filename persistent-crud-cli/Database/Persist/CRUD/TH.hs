@@ -27,10 +27,12 @@ import Database.Persist.CRUD.Options
 --    * create-<Entity> functions
 --    * read-<Entity> functions
 --    * update-<Entity> functions
+--    * delete-<Entity> functions
 -- | Also creates following definitions of type 'Mod CommandFields (Command, Action m)':
 --    * createCommands
 --    * readCommands
 --    * updateCommands
+--    * deleteCommands
 mkPersistCRUD
     :: MkPersistSettings
     -> [UnboundEntityDef]
