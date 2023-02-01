@@ -39,6 +39,7 @@ optsParser = hsubparser (listEntitiesCommand
     <> createCommands
     <> readCommands
     <> updateCommands
+    <> deleteCommands
     <> helpCommand
     )
 

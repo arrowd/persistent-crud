@@ -15,6 +15,10 @@ data Command = ListEntities
                 keyToUpdate :: PersistValue,
                 valuesToUpdate :: [PersistValue]
                }
+             | Delete {
+                checkIfExists :: Bool,
+                keyToDelete :: PersistValue
+               }
   deriving Show
 
 type Action m = Command -> ReaderT SqlBackend m PersistValue

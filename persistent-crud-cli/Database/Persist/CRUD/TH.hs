@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE RecordWildCards #-}
 module Database.Persist.CRUD.TH(
     mkPersistCRUD,
     mkPersistCRUD'
@@ -9,6 +10,7 @@ where
 
 import Control.Monad
 import Control.Monad.IO.Class
+import Data.Maybe (isJust)
 import qualified Data.Text as T
 
 import Language.Haskell.TH.Syntax
@@ -41,12 +43,14 @@ mkPersistCRUD mps ents = do
     createCommandsDec <- mkCreateCommands mps ents
     readCommandsDec <- mkReadCommands mps ents
     updateCommandsDec <- mkUpdateCommands mps ents
+    deleteCommandsDec <- mkDeleteCommands mps ents
 
     return $ mconcat [
         listEntitiesCommandDec,
         createCommandsDec,
         readCommandsDec,
-        updateCommandsDec
+        updateCommandsDec,
+        deleteCommandsDec
       ]
 
 -- | Variant of 'mkPersistCRUD' that takes 'EntityDef's instead of 'UnboundEntityDef's.
@@ -153,6 +157,44 @@ mkUpdateParserExpr mps ent = do
                 Just _ -> do
                   replace key' val
                   pure (PersistBool True)
+        |]
+  [|fmap (\cmd -> (cmd, $(action))) $(parser)|]
+
+
+mkDeleteCommands :: MkPersistSettings -> [UnboundEntityDef] -> Q [Dec]
+mkDeleteCommands mps ents = do
+  let allDeleteCmdExprs = ListE <$> forM ents (mkDeleteCommandExpr mps)
+  [d| deleteCommands :: MonadIO m => Mod CommandFields (Command, Action m)
+      deleteCommands = mconcat $(allDeleteCmdExprs)
+    |]
+
+mkDeleteCommandExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
+mkDeleteCommandExpr mps ent = do
+  let parserExpr = mkDeleteParserExpr mps ent
+  [|command ("delete-" ++ entityNameString ent)
+            (info $(parserExpr)
+                  (progDesc $ "Delete an instance of " ++ entityNameString ent ++ " entity identified by given key"))
+               |]
+
+mkDeleteParserExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
+mkDeleteParserExpr mps ent = do
+  let typ_ = pure $ genericDataType mps (entityHaskell (unboundEntityDef ent)) backendT
+      parser = [|CRUD.Delete
+                    <$> switch (short 'c' <> long "check-if-exists" <> help "Check for key existance before deleting")
+                    <*> mkArg keyArgument|]
+      action = [|\(CRUD.Delete {..}) -> do
+          let keyOrErr = fromPersistValue keyToDelete :: Either T.Text (Key $typ_)
+          case keyOrErr of
+            Left err -> pure (PersistText err)
+            Right key' -> do
+              exists <- if checkIfExists
+                           then isJust <$> get key'
+                           else pure True
+              if exists
+                 then do
+                    delete key'
+                    pure (PersistBool True)
+                 else pure (PersistBool False)
         |]
   [|fmap (\cmd -> (cmd, $(action))) $(parser)|]
 
