@@ -12,7 +12,8 @@ module Database.Persist.CRUD.Options(
     timeArgument,
     maybeArgument,
 
-    relaxedBoolReadM
+    relaxedBoolReadM,
+    exactReadM
   )
 where
 
@@ -64,4 +65,4 @@ relaxedBoolReadM = auto
         1 -> pure True
         _ -> empty
 
-exactReadM v = maybeReader $ \arg -> if v == arg then Just () else Nothing
+exactReadM v = maybeReader $ \arg -> if v == arg then Just arg else Nothing
