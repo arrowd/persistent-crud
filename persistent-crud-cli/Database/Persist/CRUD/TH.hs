@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ExplicitForAll #-}
 module Database.Persist.CRUD.TH(
     mkPersistCRUD,
     mkPersistCRUD'
@@ -24,35 +25,82 @@ import Database.Persist.CRUD.Types as CRUD
 import Database.Persist.CRUD.Options
 
 -- | For each <Entity> creates definitions for:
---    * create-<Entity> functions
---    * read-<Entity> functions
---    * update-<Entity> functions
---    * delete-<Entity> functions
--- | Also creates following definitions of type 'Mod CommandFields (Command, Action m)':
---    * createCommands
---    * readCommands
---    * updateCommands
---    * deleteCommands
+--    * Functions of type 'Mod CommandFields (Command, Action m)' named
+--        * create<Entity>Command
+--        * read<Entity>Command
+--        * update<Entity>Command
+--        * delete<Entity>Command
+--    * Functions of type 'Action m' named
+--        * create<Entity>Action
+--        * read<Entity>Action
+--        * update<Entity>Action
+--        * delete<Entity>Action
+--    * Functions of type 'Mod CommandFields (Command, Action m)':
+--        * createCommands
+--        * readCommands
+--        * updateCommands
+--        * deleteCommands
 mkPersistCRUD
     :: MkPersistSettings
     -> [UnboundEntityDef]
     -> Q [Dec]
 mkPersistCRUD mps ents = do
-    listEntitiesCommandDec <- [d|
+    let -- ["create<Entity1>Command", "create<Entity2>Command", ... ]
+        allCreateCmdExprs = pure $ ListE $ map (VarE . mkNameForEntity "create" "Command") ents
+        -- ["read<Entity1>Command", "read<Entity2>Command", ... ]
+        allReadCmdExprs = pure $ ListE $ map (VarE . mkNameForEntity "read" "Command") ents
+        -- ["update<Entity1>Command", "update<Entity2>Command", ... ]
+        allUpdateCmdExprs = pure $ ListE $ map (VarE . mkNameForEntity "update" "Command") ents
+        -- ["delete<Entity1>Command", "delete<Entity2>Command", ... ]
+        allDeleteCmdExprs = pure $ ListE $ map (VarE . mkNameForEntity "delete" "Command") ents
+
+    -- create<Entity1>Command = ...
+    -- create<Entity2>Command = ...
+    createCommandDecs <- mconcat <$> forM ents (mkCommandDec mps "create" createCommandParser createCommandDefinition)
+    createActionDecs <- mconcat <$> forM ents (mkActionDec mps "create" createAction)
+
+    -- read<Entity1>Command = ...
+    -- read<Entity2>Command = ...
+    readCommandDecs <- mconcat <$> forM ents (mkCommandDec mps "read" readCommandParser readCommandDefinition)
+    readActionDecs <- mconcat <$> forM ents (mkActionDec mps "read" readAction)
+
+    -- update<Entity1>Command = ...
+    -- update<Entity2>Command = ...
+    updateCommandDecs <- mconcat <$> forM ents (mkCommandDec mps "update" updateCommandParser updateCommandDefinition)
+    updateActionDecs <- mconcat <$> forM ents (mkActionDec mps "update" updateAction)
+
+    -- delete<Entity1>Command = ...
+    -- delete<Entity2>Command = ...
+    deleteCommandDecs <- mconcat <$> forM ents (mkCommandDec mps "delete" deleteCommandParser deleteCommandDefinition)
+    deleteActionDecs <- mconcat <$> forM ents (mkActionDec mps "delete" deleteAction)
+
+    allCommandDecs <- [d|
         listEntitiesCommand :: MonadIO m => Mod CommandFields (Command, Action m)
         listEntitiesCommand = command "list-entities" $ info (pure (ListEntities, const $ listEntities ents)) (progDesc "List all known entities")
+
+        createCommands :: MonadIO m => Mod CommandFields (Command, Action m)
+        createCommands = mconcat $(allCreateCmdExprs)
+
+        readCommands :: MonadIO m => Mod CommandFields (Command, Action m)
+        readCommands = mconcat $(allReadCmdExprs)
+
+        updateCommands :: MonadIO m => Mod CommandFields (Command, Action m)
+        updateCommands = mconcat $(allUpdateCmdExprs)
+
+        deleteCommands :: MonadIO m => Mod CommandFields (Command, Action m)
+        deleteCommands = mconcat $(allDeleteCmdExprs)
       |]
-    createCommandsDec <- mkCreateCommands mps ents
-    readCommandsDec <- mkReadCommands mps ents
-    updateCommandsDec <- mkUpdateCommands mps ents
-    deleteCommandsDec <- mkDeleteCommands mps ents
 
     return $ mconcat [
-        listEntitiesCommandDec,
-        createCommandsDec,
-        readCommandsDec,
-        updateCommandsDec,
-        deleteCommandsDec
+        createCommandDecs,
+        createActionDecs,
+        readCommandDecs,
+        readActionDecs,
+        updateCommandDecs,
+        updateActionDecs,
+        deleteCommandDecs,
+        deleteActionDecs,
+        allCommandDecs
       ]
 
 -- | Variant of 'mkPersistCRUD' that takes 'EntityDef's instead of 'UnboundEntityDef's.
@@ -67,139 +115,156 @@ listEntities :: Applicative m => [UnboundEntityDef] -> m PersistValue
 listEntities = pure . PersistList . map (PersistText . unEntityNameHS . getEntityHaskellName . unboundEntityDef)
 
 
-mkCreateCommands :: MkPersistSettings -> [UnboundEntityDef] -> Q [Dec]
-mkCreateCommands mps ents = do
-  let allCreateCmdExprs = ListE <$> forM ents (mkCreateCommandExpr mps)
-  [d| createCommands :: MonadIO m => Mod CommandFields (Command, Action m)
-      createCommands = mconcat $(allCreateCmdExprs)
-    |]
+createCommandParser :: Q Type -> Q Exp
+createCommandParser recordType = [|
+    CRUD.Create <$> traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $recordType)))
+  |]
 
-mkCreateCommandExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
-mkCreateCommandExpr mps ent = do
-  let parserExpr = mkCreateParserExpr mps ent
-  [|command ("create-" ++ entityNameString ent)
-            (info $(parserExpr)
-                  (progDesc $ "Create an instance of " ++ entityNameString ent ++ " entity"))
-               |]
+type MkCommandDefinition = Q Pat -> Q Exp -> Q Exp -> UnboundEntityDef -> Q [Dec]
 
-mkCreateParserExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
-mkCreateParserExpr mps ent = do
-  let typ_ = pure $ genericDataType mps (entityHaskell (unboundEntityDef ent)) backendT
-      -- TODO: ideally we would like to call tabulateEntityA here
-      parser = [|traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $typ_)))|]
-      action = [|\(Create args) -> do
-          let valOrErr = fromPersistValues args :: Either T.Text $typ_
-          case valOrErr of
-               Left err -> pure (PersistText err)
-               Right val -> toPersistValue <$> insert val
-        |]
-  [|fmap (\args -> (Create args, $(action))) $(parser)|]
+createCommandDefinition :: MkCommandDefinition
+createCommandDefinition funcName parser action ent = [d|
+    $funcName = command ("-" ++ entityNameString ent)
+        (info (fmap (\cmd -> (cmd, $(action))) $(parser))
+          (progDesc $ "Create an instance of " ++ entityNameString ent ++ " entity"))
+  |]
+
+createAction :: Q Type -> Q Exp
+createAction recordType = [|
+    do
+      let Create args = cmd
+          valOrErr = fromPersistValues args :: Either T.Text $recordType
+      case valOrErr of
+          Left err -> pure (PersistText err)
+          Right val -> toPersistValue <$> insert val
+  |]
 
 
-mkReadCommands :: MkPersistSettings -> [UnboundEntityDef] -> Q [Dec]
-mkReadCommands mps ents = do
-  let allReadCmdExprs = ListE <$> forM ents (mkReadCommandExpr mps)
-  [d| readCommands :: MonadIO m => Mod CommandFields (Command, Action m)
-      readCommands = mconcat $(allReadCmdExprs)
-    |]
+readCommandParser :: Q Type -> Q Exp
+readCommandParser = const [|
+    CRUD.Read <$> option auto (short 'l' <> metavar "INT" <> help "Number of rows to limit the output to" <> value 0)
+  |]
 
-mkReadCommandExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
-mkReadCommandExpr mps ent = do
-  let parserExpr = mkReadParserExpr mps ent
-  [|command ("read-" ++ entityNameString ent)
-            (info $(parserExpr)
-                  (progDesc $ "List instances of " ++ entityNameString ent ++ " entity"))
-               |]
+readCommandDefinition :: MkCommandDefinition
+readCommandDefinition funcName parser action ent = [d|
+    $funcName = command ("read-" ++ entityNameString ent)
+        (info (fmap (\cmd -> (cmd, $(action))) $(parser))
+              (progDesc $ "List instances of " ++ entityNameString ent ++ " entity"))
+  |]
 
-mkReadParserExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
-mkReadParserExpr mps ent = do
-  let typ_ = pure $ genericDataType mps (entityHaskell (unboundEntityDef ent)) backendT
-      parser = [|option auto
-                        (short 'l' <> metavar "INT" <> help "Number of rows to limit the output to" <> value 0)
-                |]
-      action = [|\(Read limit) -> do
-          let selectOpts = case limit of
-                0 -> []
-                _ -> [LimitTo $ fromIntegral limit]
-          ents <- selectList [] selectOpts
-          pure (PersistList (map toPersistValue (ents :: [Entity $typ_])))
-        |]
-  [|fmap (\args -> (Read args, $(action))) $(parser)|]
+readAction :: Q Type -> Q Exp
+readAction recordType = [|
+    do
+      let Read limit = cmd
+          selectOpts = case limit of
+            0 -> []
+            _ -> [LimitTo $ fromIntegral limit]
+      ents <- selectList [] selectOpts
+      pure (PersistList (map toPersistValue (ents :: [Entity $recordType])))
+  |]
 
 
-mkUpdateCommands :: MkPersistSettings -> [UnboundEntityDef] -> Q [Dec]
-mkUpdateCommands mps ents = do
-  let allUpdateCmdExprs = ListE <$> forM ents (mkUpdateCommandExpr mps)
-  [d| updateCommands :: MonadIO m => Mod CommandFields (Command, Action m)
-      updateCommands = mconcat $(allUpdateCmdExprs)
-    |]
+updateCommandParser :: Q Type -> Q Exp
+updateCommandParser recordType = [|
+    CRUD.Update <$> mkArg keyArgument <*> traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $recordType)))
+  |]
 
-mkUpdateCommandExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
-mkUpdateCommandExpr mps ent = do
-  let parserExpr = mkUpdateParserExpr mps ent
-  [|command ("update-" ++ entityNameString ent)
-            (info $(parserExpr)
-                  (progDesc $ "Updates an instance of " ++ entityNameString ent ++ " entity identified by given key with new values"))
-               |]
+updateCommandDefinition :: MkCommandDefinition
+updateCommandDefinition funcName parser action ent = [d|
+    $funcName = command ("update-" ++ entityNameString ent)
+        (info (fmap (\cmd -> (cmd, $(action))) $(parser))
+              (progDesc $ "Update an instance of " ++ entityNameString ent ++ " entity identified by given key with new values"))
+  |]
 
-mkUpdateParserExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
-mkUpdateParserExpr mps ent = do
-  let typ_ = pure $ genericDataType mps (entityHaskell (unboundEntityDef ent)) backendT
-      parser = [|CRUD.Update <$> mkArg keyArgument <*> traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $typ_)))
-                |]
-      action = [|\(CRUD.Update key args) -> do
-          let keyOrErr = fromPersistValue key :: Either T.Text (Key $typ_)
-              valOrErr = fromPersistValues args :: Either T.Text $typ_
-          case (,) <$> keyOrErr <*> valOrErr of
-            Left err -> pure (PersistText err)
-            Right (key', val) -> do
-              existingEnt <- get key'
-              case existingEnt of
-                Nothing -> pure (PersistText "Requested key not found")
-                Just _ -> do
-                  replace key' val
-                  pure (PersistBool True)
-        |]
-  [|fmap (\cmd -> (cmd, $(action))) $(parser)|]
+updateAction :: Q Type -> Q Exp
+updateAction recordType = [|
+    do
+      let CRUD.Update key args = cmd
+          keyOrErr = fromPersistValue key :: Either T.Text (Key $recordType)
+          valOrErr = fromPersistValues args :: Either T.Text $recordType
+      case (,) <$> keyOrErr <*> valOrErr of
+        Left err -> pure (PersistText err)
+        Right (key', val) -> do
+          existingEnt <- get key'
+          case existingEnt of
+            Nothing -> pure (PersistText "Requested key not found")
+            Just _ -> do
+              replace key' val
+              pure (PersistBool True)
+  |]
 
 
-mkDeleteCommands :: MkPersistSettings -> [UnboundEntityDef] -> Q [Dec]
-mkDeleteCommands mps ents = do
-  let allDeleteCmdExprs = ListE <$> forM ents (mkDeleteCommandExpr mps)
-  [d| deleteCommands :: MonadIO m => Mod CommandFields (Command, Action m)
-      deleteCommands = mconcat $(allDeleteCmdExprs)
-    |]
+deleteCommandParser :: Q Type -> Q Exp
+deleteCommandParser = const [|
+    CRUD.Delete
+      <$> switch (short 'c' <> long "check-if-exists" <> help "Check for key existance before deleting")
+      <*> mkArg keyArgument
+  |]
 
-mkDeleteCommandExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
-mkDeleteCommandExpr mps ent = do
-  let parserExpr = mkDeleteParserExpr mps ent
-  [|command ("delete-" ++ entityNameString ent)
-            (info $(parserExpr)
-                  (progDesc $ "Delete an instance of " ++ entityNameString ent ++ " entity identified by given key"))
-               |]
+deleteCommandDefinition :: MkCommandDefinition
+deleteCommandDefinition funcName parser action ent = [d|
+    $funcName = command ("delete-" ++ entityNameString ent)
+        (info (fmap (\cmd -> (cmd, $(action))) $(parser))
+              (progDesc $ "Delete an instance of " ++ entityNameString ent ++ " entity identified by given key"))
+  |]
 
-mkDeleteParserExpr :: MkPersistSettings -> UnboundEntityDef -> Q Exp
-mkDeleteParserExpr mps ent = do
-  let typ_ = pure $ genericDataType mps (entityHaskell (unboundEntityDef ent)) backendT
-      parser = [|CRUD.Delete
-                    <$> switch (short 'c' <> long "check-if-exists" <> help "Check for key existance before deleting")
-                    <*> mkArg keyArgument|]
-      action = [|\(CRUD.Delete {..}) -> do
-          let keyOrErr = fromPersistValue keyToDelete :: Either T.Text (Key $typ_)
-          case keyOrErr of
-            Left err -> pure (PersistText err)
-            Right key' -> do
-              exists <- if checkIfExists
-                           then isJust <$> get key'
-                           else pure True
-              if exists
-                 then do
-                    delete key'
-                    pure (PersistBool True)
-                 else pure (PersistBool False)
-        |]
-  [|fmap (\cmd -> (cmd, $(action))) $(parser)|]
+deleteAction :: Q Type -> Q Exp
+deleteAction recordType = [|
+    do
+      let CRUD.Delete {..} = cmd
+          keyOrErr = fromPersistValue keyToDelete :: Either T.Text (Key $recordType)
+      case keyOrErr of
+        Left err -> pure (PersistText err)
+        Right key' -> do
+          exists <- if checkIfExists
+                        then isJust <$> get key'
+                        else pure True
+          if exists
+              then do
+                delete key'
+                pure (PersistBool True)
+              else pure (PersistBool False)
+  |]
 
+
+commandDefinitionType :: Q Type
+commandDefinitionType = [t|
+    forall m . MonadIO m => Mod CommandFields (Command, Action m)
+  |]
+
+actionDefinitionType :: Q Type
+actionDefinitionType = [t|
+    forall m . MonadIO m => Action m
+  |]
+
+mkCommandDec :: MkPersistSettings -> String -> (Q Type -> Q Exp) -> MkCommandDefinition -> UnboundEntityDef -> Q [Dec]
+mkCommandDec mps commandName mkParser mkDefinition ent = do
+  let funcName = mkNameForEntity commandName "Command" ent
+      recordType = pure $ genericDataType mps (entityHaskell (unboundEntityDef ent)) backendT
+      action = pure $ VarE $ mkNameForEntity commandName "Action" ent
+      funcNamePat = pure $ VarP funcName
+
+  defType <- commandDefinitionType
+  let signature = SigD funcName defType
+  def <- mkDefinition funcNamePat (mkParser recordType) action ent
+
+  return (signature : def)
+
+mkActionDec :: MkPersistSettings -> String -> (Q Type -> Q Exp) -> UnboundEntityDef -> Q [Dec]
+mkActionDec mps commandName mkAction ent = do
+  let funcName = mkNameForEntity commandName "Action" ent
+      recordType = pure $ genericDataType mps (entityHaskell (unboundEntityDef ent)) backendT
+
+  defType <- actionDefinitionType
+  body <- mkAction recordType
+
+  let signature = SigD funcName defType
+      definition = FunD funcName [Clause [VarP $ mkName "cmd"] (NormalB body) []]
+
+  return [signature, definition]
+
+mkNameForEntity :: String -> String -> UnboundEntityDef -> Name
+mkNameForEntity prefix suffix ent = mkName (prefix <> entityNameString ent <> suffix)
 
 entityNameString :: UnboundEntityDef -> String
 entityNameString = T.unpack . unEntityNameHS . getEntityHaskellName . unboundEntityDef
