@@ -11,18 +11,26 @@ where
 
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Reader.Class
+import Data.Char (toUpper, toLower, isSpace)
+import Data.Dynamic
+import qualified Data.List as L
 import Data.Maybe (isJust)
 import qualified Data.Text as T
+import Text.Read (readMaybe)
 
 import Language.Haskell.TH.Syntax
 
 import Database.Persist
+import Database.Persist.Class.PersistEntity
 import Database.Persist.Quasi.Internal
 import Database.Persist.TH
 import Database.Persist.EntityDef.Internal (EntityDef(..))
 
 import Database.Persist.CRUD.Types as CRUD
 import Database.Persist.CRUD.Options
+
+import Debug.Trace
 
 -- | For each <Entity> creates definitions for:
 --    * Functions of type 'Mod CommandFields (Command, Action m)' named
@@ -91,7 +99,10 @@ mkPersistCRUD mps ents = do
         deleteCommands = mconcat $(allDeleteCmdExprs)
       |]
 
+    filterReadMDecs <- mconcat <$> forM ents (mkFilterDec mps)
+
     return $ mconcat [
+        filterReadMDecs,
         createCommandDecs,
         createActionDecs,
         readCommandDecs,
@@ -115,16 +126,17 @@ listEntities :: Applicative m => [UnboundEntityDef] -> m PersistValue
 listEntities = pure . PersistList . map (PersistText . unEntityNameHS . getEntityHaskellName . unboundEntityDef)
 
 
-createCommandParser :: Q Type -> Q Exp
-createCommandParser recordType = [|
+createCommandParser :: MkParserDefinition
+createCommandParser _ recordType = [|
     CRUD.Create <$> traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $recordType)))
   |]
 
 type MkCommandDefinition = Q Pat -> Q Exp -> Q Exp -> UnboundEntityDef -> Q [Dec]
+type MkParserDefinition = Q Exp -> Q Type -> Q Exp
 
 createCommandDefinition :: MkCommandDefinition
 createCommandDefinition funcName parser action ent = [d|
-    $funcName = command ("-" ++ entityNameString ent)
+    $funcName = command ("create-" ++ entityNameString ent)
         (info (fmap (\cmd -> (cmd, $(action))) $(parser))
           (progDesc $ "Create an instance of " ++ entityNameString ent ++ " entity"))
   |]
@@ -140,8 +152,8 @@ createAction recordType = [|
   |]
 
 
-readCommandParser :: Q Type -> Q Exp
-readCommandParser = const [|
+readCommandParser :: MkParserDefinition
+readCommandParser _ = const [|
     CRUD.Read <$> option auto (short 'l' <> metavar "INT" <> help "Number of rows to limit the output to" <> value 0)
   |]
 
@@ -164,8 +176,8 @@ readAction recordType = [|
   |]
 
 
-updateCommandParser :: Q Type -> Q Exp
-updateCommandParser recordType = [|
+updateCommandParser :: MkParserDefinition
+updateCommandParser _ recordType = [|
     CRUD.Update <$> mkArg keyArgument <*> traverse fieldToArgument (getEntityFields (entityDef (Nothing :: Maybe $recordType)))
   |]
 
@@ -194,10 +206,11 @@ updateAction recordType = [|
   |]
 
 
-deleteCommandParser :: Q Type -> Q Exp
-deleteCommandParser = const [|
+deleteCommandParser :: MkParserDefinition
+deleteCommandParser filterReaderName _ = [|
     CRUD.Delete
       <$> switch (short 'c' <> long "check-if-exists" <> help "Check for key existance before deleting")
+      <*> many (option $filterReaderName (short 'f' <> long "filter" <> help "Filtering condition"))
       <*> mkArg keyArgument
   |]
 
@@ -212,18 +225,8 @@ deleteAction :: Q Type -> Q Exp
 deleteAction recordType = [|
     do
       let CRUD.Delete {..} = cmd
-          keyOrErr = fromPersistValue keyToDelete :: Either T.Text (Key $recordType)
-      case keyOrErr of
-        Left err -> pure (PersistText err)
-        Right key' -> do
-          exists <- if checkIfExists
-                        then isJust <$> get key'
-                        else pure True
-          if exists
-              then do
-                delete key'
-                pure (PersistBool True)
-              else pure (PersistBool False)
+      deleteWhere (map (`fromDyn` undefined) filters :: [Filter $recordType])
+      pure $ PersistBool True
   |]
 
 
@@ -237,16 +240,17 @@ actionDefinitionType = [t|
     forall m . MonadIO m => Action m
   |]
 
-mkCommandDec :: MkPersistSettings -> String -> (Q Type -> Q Exp) -> MkCommandDefinition -> UnboundEntityDef -> Q [Dec]
+mkCommandDec :: MkPersistSettings -> String -> MkParserDefinition -> MkCommandDefinition -> UnboundEntityDef -> Q [Dec]
 mkCommandDec mps commandName mkParser mkDefinition ent = do
   let funcName = mkNameForEntity commandName "Command" ent
+      filterReaderName = pure $ VarE $ mkNameForEntity "" "FilterReadM" ent
       recordType = pure $ genericDataType mps (entityHaskell (unboundEntityDef ent)) backendT
       action = pure $ VarE $ mkNameForEntity commandName "Action" ent
       funcNamePat = pure $ VarP funcName
 
   defType <- commandDefinitionType
   let signature = SigD funcName defType
-  def <- mkDefinition funcNamePat (mkParser recordType) action ent
+  def <- mkDefinition funcNamePat (mkParser filterReaderName recordType) action ent
 
   return (signature : def)
 
@@ -263,11 +267,66 @@ mkActionDec mps commandName mkAction ent = do
 
   return [signature, definition]
 
+mkFilterDec :: MkPersistSettings -> UnboundEntityDef -> Q [Dec]
+mkFilterDec mps ent = do
+  let funcName = mkNameForEntity "" "FilterReadM" ent
+      funcNameP = pure $ VarP funcName
+      recordType = pure $ genericDataType mps (entityHaskell (unboundEntityDef ent)) backendT
+  caseE <- do
+        caseMatches <- zipWithM' (unboundEntityFields ent) [(0 :: Int)..] $ \unboundField fieldIx -> do
+          let entityFieldName = filterConName mps ent unboundField
+              fieldConName = mkName entityFieldName
+              fieldCon = pure $ ConE fieldConName
+          caseBranchBody <- [|do
+              filter <- case readPersistFilterMaybe filterStr of
+                             Just filter -> pure filter
+                             _ -> readerAbort $ ErrorMsg ("Unknown filter operator: " <> filterStr)
+              let field = persistFieldDef $fieldCon
+              value <- ReadM $ local (const valueStr) $ unReadM $ do
+                  case filter of
+                    In -> FilterValues <$> many (fromPersistValueRight <$> fieldToReader field)
+                    NotIn -> FilterValues <$> many (fromPersistValueRight <$> fieldToReader field)
+                    _ -> FilterValue <$> (fromPersistValueRight <$> fieldToReader field)
+              pure $ toDyn $ Filter $fieldCon value filter
+            |]
+          pure $ Match
+            (LitP $ StringL entityFieldName)
+            (NormalB caseBranchBody)
+            []
+        wildMatchBody <- [|readerAbort $ ErrorMsg ("Unknown entity field: " <> fieldStr)|]
+        let wildMatch = Match WildP (NormalB wildMatchBody) []
+        pure $ CaseE (VarE $ mkName "fieldStr") (caseMatches <> [wildMatch])
+
+  defType <- [t|ReadM Dynamic|]
+  let signature = SigD funcName defType
+  definition <- [d|
+      $funcNameP = do
+          str <- readerAsk
+          let (fieldStr0, rest) = break isFilterSymbol str
+              fieldStr = (L.dropWhile isSpace . L.dropWhileEnd isSpace) fieldStr0
+              (filterStr, valueStr) = span isFilterSymbol rest
+              fields = getEntityFields (entityDef (Nothing :: Maybe $recordType))
+          $(pure caseE)
+    |]
+  pure (signature : definition)
+
 mkNameForEntity :: String -> String -> UnboundEntityDef -> Name
-mkNameForEntity prefix suffix ent = mkName (prefix <> entityNameString ent <> suffix)
+mkNameForEntity prefix suffix ent = mkName (prefix <> entName <> suffix)
+  where
+    entName = if null prefix
+                 then toLower (head $ entityNameString ent) : tail (entityNameString ent)
+                 else entityNameString ent
 
 entityNameString :: UnboundEntityDef -> String
 entityNameString = T.unpack . unEntityNameHS . getEntityHaskellName . unboundEntityDef
+
+zipWithM' a b f = zipWithM f a b
+
+
+fromPersistValueRight :: PersistField a => PersistValue -> a
+fromPersistValueRight x = case fromPersistValue x of
+    Right r -> r
+    Left e -> error ("Impossible happened: " <> T.unpack e)
 
 
 fieldToArgument :: FieldDef -> Parser PersistValue
@@ -286,6 +345,23 @@ fieldToArgument field = mkArg $ case fieldSqlType field of
       else (valReader, valMod)
     (maybeReader, maybeMod) = maybeArgument
     prependMaybeMetavar optProps = optProps { propMetaVar = "(# | " <> propMetaVar optProps <> ")"}
+
+
+fieldToReader :: FieldDef -> ReadM PersistValue
+fieldToReader field = case fieldSqlType field of
+    SqlString -> maybefy textArgument
+    SqlInt32 -> maybefy intArgument
+    SqlInt64 -> maybefy intArgument
+    SqlBool -> maybefy boolArgument
+    SqlDayTime -> maybefy timeArgument
+  where
+    isMaybe = case fieldType field of
+      FTApp (FTTypeCon _ "Maybe") _ -> True
+      _ -> isFieldNullable field /= NotNullable
+    maybefy (valReader, _) = if isMaybe
+      then maybeReader <|> valReader
+      else valReader
+    (maybeReader, _) = maybeArgument
 
 -- Stolen from persistent itself
 
@@ -314,3 +390,32 @@ mkEntityNameHSGenericName name =
 backendName :: Name
 backendName = mkName "backend"
 
+filterConName
+    :: MkPersistSettings
+    -> UnboundEntityDef
+    -> UnboundFieldDef
+    -> String
+filterConName mps (unboundEntityDef -> entity) field =
+    filterConName' mps (entityHaskell entity) (unboundFieldNameHS field)
+
+filterConName'
+    :: MkPersistSettings
+    -> EntityNameHS
+    -> FieldNameHS
+    -> String
+filterConName' mps entity field = T.unpack name
+    where
+        name
+            | field == FieldNameHS "Id" = entityName <> fieldName
+            | mpsPrefixFields mps       = modifiedName
+            | otherwise                 = fieldName
+
+        modifiedName = mpsConstraintLabelModifier mps entityName fieldName
+        entityName = unEntityNameHS entity
+        fieldName = upperFirst $ unFieldNameHS field
+
+upperFirst :: T.Text -> T.Text
+upperFirst t =
+    case T.uncons t of
+        Just (a, b) -> T.cons (toUpper a) b
+        Nothing -> t

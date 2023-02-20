@@ -4,6 +4,7 @@ import Control.Monad.Reader (ReaderT)
 import Data.Int
 import Database.Persist
 import Database.Persist.SqlBackend (SqlBackend)
+import Data.Dynamic
 
 data Command = ListEntities
              | TimeHelp
@@ -17,6 +18,7 @@ data Command = ListEntities
                }
              | Delete {
                 checkIfExists :: Bool,
+                filters :: [Dynamic],
                 keyToDelete :: PersistValue
                }
   deriving Show
