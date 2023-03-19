@@ -2,8 +2,6 @@ module Database.Persist.CRUD.Options(
     module Options.Applicative,
     readerAsk,
     maybeReader',
-    optionMod,
-    propMetaVar,
     ReadM(..),
 
     mkArg,
@@ -16,6 +14,7 @@ module Database.Persist.CRUD.Options(
     timeArgument,
     maybeArgument,
 
+    maybefy,
     readPersistFilterMaybe,
     relaxedBoolReadM,
     exactReadM
@@ -37,8 +36,8 @@ maybeReader' (Just x) = pure x
 maybeReader' _ = readerAbort $ ErrorMsg "maybeReader': Nothing"
 
 
-nothingSymbol :: String
-nothingSymbol = "#"
+nothingSymbol :: Char
+nothingSymbol = '#'
 
 mkArg = uncurry argument
 
@@ -63,13 +62,18 @@ boolArgument :: (ReadM PersistValue, Mod ArgumentFields PersistValue)
 boolArgument = (PersistBool <$> relaxedBoolReadM, metavar "BOOL")
 
 timeArgument :: (ReadM PersistValue, Mod ArgumentFields PersistValue)
-timeArgument = (PersistUTCTime <$> maybeReader (\str -> case span (/= '#') str of
+timeArgument = (PersistUTCTime <$> maybeReader (\str -> case span (/= nothingSymbol) str of
     (format, _:timeVal) -> parseTimeM True defaultTimeLocale format timeVal
     _ -> Nothing
-    ), metavar "FORMAT#TIME")
+    ), metavar ("FORMAT" ++ nothingSymbol : "TIME"))
 
 maybeArgument :: (ReadM PersistValue, Mod ArgumentFields PersistValue)
-maybeArgument = (PersistNull <$ exactReadM nothingSymbol, metavar nothingSymbol)
+maybeArgument = (PersistNull <$ exactReadM [nothingSymbol], metavar [nothingSymbol])
+
+maybefy (valReader, valMod) = (maybeReader <|> valReader, valMod <> optionMod prependMaybeMetavar)
+  where
+    (maybeReader, _) = maybeArgument
+    prependMaybeMetavar optProps = optProps { propMetaVar = "(# | " <> propMetaVar optProps <> ")"}
 
 
 readPersistFilterMaybe :: String -> Maybe PersistFilter

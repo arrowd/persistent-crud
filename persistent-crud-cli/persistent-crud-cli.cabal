@@ -15,14 +15,15 @@ library
         Database.Persist.CRUD
         Database.Persist.CRUD.Options
         Database.Persist.CRUD.TH
-        Database.Persist.CRUD.Types
     build-depends:
         base < 5,
+        persistent-crud-core,
         conduit,
         containers,
         mtl,
         optparse-applicative,
         persistent,
+        split,
         template-haskell,
         text,
         time

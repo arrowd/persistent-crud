@@ -1,7 +1,6 @@
 module Database.Persist.CRUD.Types where
 
 import Control.Monad.Reader (ReaderT)
-import Data.Int
 import Database.Persist
 import Database.Persist.SqlBackend (SqlBackend)
 import Data.Dynamic
@@ -10,6 +9,7 @@ data Command = ListEntities
              | TimeHelp
              | Create [PersistValue]
              | Read {
+                filter :: [[Dynamic]],
                 readLimitTo :: Word
                }
              | Update {
@@ -17,9 +17,8 @@ data Command = ListEntities
                 valuesToUpdate :: [PersistValue]
                }
              | Delete {
-                checkIfExists :: Bool,
-                filters :: [Dynamic],
-                keyToDelete :: PersistValue
+                confirmDeleteEverything :: Bool,
+                filter :: [[Dynamic]]
                }
   deriving Show
 

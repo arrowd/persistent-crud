@@ -1,2 +1,3 @@
 packages:
+    persistent-crud-core
     persistent-crud-cli
