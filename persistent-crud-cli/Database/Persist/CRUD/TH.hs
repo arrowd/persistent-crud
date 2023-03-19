@@ -210,11 +210,7 @@ mkFilterDec mps ent = do
                              Just filter -> pure filter
                              _ -> readerAbort $ ErrorMsg ("Unknown filter operator: " <> filterStr)
               let field = persistFieldDef $fieldCon
-              value <- ReadM $ local (const valueStr) $ unReadM $ do
-                  case filter of
-                    In -> FilterValues <$> many (fromPersistValueRight <$> fst (fieldToArgument field))
-                    NotIn -> FilterValues <$> many (fromPersistValueRight <$> fst (fieldToArgument field))
-                    _ -> FilterValue <$> (fromPersistValueRight <$> fst (fieldToArgument field))
+              value <- ReadM $ local (const valueStr) $ unReadM (FilterValue <$> (fromPersistValueRight <$> fst (fieldToArgument field)))
               pure $ toDyn $ Filter $fieldCon value filter
             |]
           pure $ Match

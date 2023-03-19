@@ -84,9 +84,6 @@ readPersistFilterMaybe ">" = pure PT.Gt
 readPersistFilterMaybe "<" = pure PT.Lt
 readPersistFilterMaybe ">=" = pure PT.Ge
 readPersistFilterMaybe "<=" = pure PT.Le
-readPersistFilterMaybe "<-" = pure PT.In
-readPersistFilterMaybe "/<-" = pure PT.NotIn
-readPersistFilterMaybe "!<-" = pure PT.NotIn
 readPersistFilterMaybe _ = Nothing
 
 relaxedBoolReadM :: ReadM Bool

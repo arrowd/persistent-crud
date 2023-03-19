@@ -37,7 +37,6 @@ helpCommand = command "help" $ info args (progDesc "Print help on how to values 
         "Field is a CamelCase string in form of \"<EntityName><FieldName>\"",
         "Example:\t\t\t\"UserId\", \"EmailVerified\", etc.",
         "Operator is one of \"=\" or \"==\", \"!=\", \">\", \"<\", \">=\", \"<=\"",
-        "\tand \"<-\", \"/<-\" or \"!<-\" standing for \"in list\" and \"not in list\" respectively.",
         "Value is parsed by the same rules as types listed above",
         "Complete filter examples:",
         "\tUserName=Alice",
